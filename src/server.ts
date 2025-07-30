@@ -3,6 +3,7 @@
 import { createServer } from 'http';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import {
   CallToolRequestSchema,
   ErrorCode,
@@ -216,8 +217,13 @@ class ClaudeCodeDocServer {
     });
   }
 
-  async run() {
+  async runStdio() {
     const transport = new StdioServerTransport();
+    await this.server.connect(transport);
+  }
+
+  async runSSE(res: any) {
+    const transport = new SSEServerTransport('/mcp', res);
     await this.server.connect(transport);
   }
 
@@ -226,10 +232,10 @@ class ClaudeCodeDocServer {
   }
 }
 
-// Create HTTP server for Railway
+// Create HTTP server with proper MCP endpoint
 const PORT = process.env.PORT || 3000;
 
-const httpServer = createServer((req, res) => {
+const httpServer = createServer(async (req, res) => {
   // Handle CORS
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -241,31 +247,58 @@ const httpServer = createServer((req, res) => {
     return;
   }
 
+  // MCP endpoint - this is what clients will connect to
+  if (req.url === '/mcp') {
+    if (req.method === 'POST') {
+      // Handle MCP over HTTP
+      const mcpServer = new ClaudeCodeDocServer();
+      await mcpServer.runSSE(res);
+      return;
+    } else if (req.method === 'GET') {
+      // SSE endpoint for MCP
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      });
+      
+      const mcpServer = new ClaudeCodeDocServer();
+      await mcpServer.runSSE(res);
+      return;
+    }
+  }
+
+  // Health check
   if (req.url === '/health' || req.url === '/') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ 
       status: 'Claude Code MCP Server Running',
       timestamp: new Date().toISOString(),
-      docs: CLAUDE_CODE_DOCS.length + ' documentation sections available'
+      endpoints: {
+        mcp: '/mcp (POST/GET for MCP protocol)',
+        health: '/health'
+      }
     }));
     return;
   }
 
-  if (req.url === '/docs') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(CLAUDE_CODE_DOCS));
-    return;
-  }
-
   res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found' }));
+  res.end(JSON.stringify({ error: 'Not found. Use /mcp for MCP protocol.' }));
 });
 
 httpServer.listen(PORT, () => {
-  console.log(`🚀 HTTP server running on port ${PORT}`);
+  console.log(`🚀 MCP Server running on port ${PORT}`);
   console.log(`📚 Claude Code Documentation MCP Server ready`);
-  console.log(`🔗 Health check: http://localhost:${PORT}/health`);
+  console.log(`🔗 MCP endpoint: http://localhost:${PORT}/mcp`);
+  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
 });
 
-// Also export for potential MCP stdio usage
-export { ClaudeCodeDocServer };
+// Handle stdio mode for command-line usage
+if (process.argv.includes('--stdio')) {
+  const mcpServer = new ClaudeCodeDocServer();
+  mcpServer.runStdio().catch(console.error);
+} else {
+  // Export for potential npm package usage
+  export { ClaudeCodeDocServer };
+}
