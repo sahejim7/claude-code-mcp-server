@@ -232,6 +232,9 @@ class ClaudeCodeDocServer {
   }
 }
 
+// Export the class at the top level
+export { ClaudeCodeDocServer };
+
 // Create HTTP server with proper MCP endpoint
 const PORT = process.env.PORT || 3000;
 
@@ -287,18 +290,16 @@ const httpServer = createServer(async (req, res) => {
   res.end(JSON.stringify({ error: 'Not found. Use /mcp for MCP protocol.' }));
 });
 
-httpServer.listen(PORT, () => {
-  console.log(`🚀 MCP Server running on port ${PORT}`);
-  console.log(`📚 Claude Code Documentation MCP Server ready`);
-  console.log(`🔗 MCP endpoint: http://localhost:${PORT}/mcp`);
-  console.log(`🏥 Health check: http://localhost:${PORT}/health`);
-});
-
 // Handle stdio mode for command-line usage
 if (process.argv.includes('--stdio')) {
   const mcpServer = new ClaudeCodeDocServer();
   mcpServer.runStdio().catch(console.error);
 } else {
-  // Export for potential npm package usage
-  export { ClaudeCodeDocServer };
+  // Start HTTP server
+  httpServer.listen(PORT, () => {
+    console.log(`🚀 MCP Server running on port ${PORT}`);
+    console.log(`📚 Claude Code Documentation MCP Server ready`);
+    console.log(`🔗 MCP endpoint: http://localhost:${PORT}/mcp`);
+    console.log(`🏥 Health check: http://localhost:${PORT}/health`);
+  });
 }
