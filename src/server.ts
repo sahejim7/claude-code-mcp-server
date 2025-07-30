@@ -251,7 +251,7 @@ const httpServer = createServer(async (req, res) => {
   }
 
   // MCP endpoint - this is what clients will connect to
-  if (req.url === '/mcp') {
+  if (req.url === '/mcp' || req.url === '/sse') {
     if (req.method === 'POST') {
       // Handle MCP over HTTP
       const mcpServer = new ClaudeCodeDocServer();
@@ -280,6 +280,7 @@ const httpServer = createServer(async (req, res) => {
       timestamp: new Date().toISOString(),
       endpoints: {
         mcp: '/mcp (POST/GET for MCP protocol)',
+        sse: '/sse (GET for SSE/MCP protocol)', 
         health: '/health'
       }
     }));
@@ -300,6 +301,7 @@ if (process.argv.includes('--stdio')) {
     console.log(`🚀 MCP Server running on port ${PORT}`);
     console.log(`📚 Claude Code Documentation MCP Server ready`);
     console.log(`🔗 MCP endpoint: http://localhost:${PORT}/mcp`);
+    console.log(`🔗 SSE endpoint: http://localhost:${PORT}/sse`);
     console.log(`🏥 Health check: http://localhost:${PORT}/health`);
   });
 }
