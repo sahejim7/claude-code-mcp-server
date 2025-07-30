@@ -23,7 +23,7 @@ const CLAUDE_CODE_DOCS: DocSection[] = [
   {
     id: 'overview',
     title: 'Claude Code Overview',
-    content: `Claude Code is an agentic coding tool that lives in your terminal, understands your codebase,\nand helps you code faster through natural language commands. By integrating directly with your\ndevelopment environment, Claude Code streamlines your workflow without requiring additional\nservers or complex setup.
+    content: `Claude Code is an agentic coding tool that lives in your terminal, understands your codebase, and helps you code faster through natural language commands.
 
 Key capabilities:
 - Editing files and fixing bugs across your codebase
@@ -38,53 +38,36 @@ Key capabilities:
     title: 'Getting Started with Claude Code',
     content: `To get started with Claude Code:
 
-1. Follow the installation guide which covers:
-   - System requirements
-   - Installation steps
-   - Authentication process
+1. Follow the installation guide
+2. Claude operates directly in your terminal with full project awareness
+3. No need to manually manage context—Claude navigates your code automatically
 
-2. Claude Code operates directly in your terminal and maintains awareness of your entire project structure.
-
-3. No need to manually add files to context—Claude will explore your codebase as needed.
-
-Security features:
-- Direct API connection to Anthropic's API
-- Works directly in your terminal
-- Understands your entire project context
-- Takes real actions like editing files and creating commits`,
+Security:
+- Direct API connection to Anthropic
+- Takes real actions in your terminal`,
     url: 'https://docs.anthropic.com/en/docs/claude-code/getting-started'
   },
   {
     id: 'enterprise',
     title: 'Enterprise Integration',
-    content: `Claude Code seamlessly integrates with enterprise AI platforms:
+    content: `Enterprise platforms supported:
 
-- Amazon Bedrock integration for secure, compliant deployments
-- Google Vertex AI support for enterprise requirements
-- Meets organizational security and compliance standards
+- Amazon Bedrock
+- Google Vertex AI
 
-The enterprise integrations maintain the same direct terminal operation while providing the security and compliance features required by organizations.`,
+Secure and compliant deployments.`,
     url: 'https://docs.anthropic.com/en/docs/claude-code/bedrock-vertex'
   },
   {
     id: 'privacy-security',
     title: 'Privacy and Security',
-    content: `Claude Code's architecture ensures security and privacy:
+    content: `Data and privacy safeguards:
 
-Data Usage:
-- Feedback may be used to improve products and services
-- Will NOT train generative models using your feedback
-- User feedback transcripts stored for only 30 days
-
-Privacy Safeguards:
-- Limited retention periods for sensitive information
-- Restricted access to user session data
-- Clear policies against using feedback for model training
-- Direct API connection without intermediate servers
-
-Report bugs with the /bug command or through the GitHub repository.`,
+- Feedback may be used to improve product quality, not model training
+- Data retention for 30 days
+- Direct API communication, no intermediate servers`,
     url: 'https://docs.anthropic.com/en/docs/claude-code/'
-  }
+  },
 ];
 
 class ClaudeCodeDocServer {
@@ -111,15 +94,15 @@ class ClaudeCodeDocServer {
     });
 
     this.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
-      const uri = request.params.uri;
-      const docId = new URL(uri).pathname.replace('/docs/', '');
+      const docId = new URL(request.params.uri).pathname.replace('/docs/', '');
       const doc = CLAUDE_CODE_DOCS.find(d => d.id === docId);
       if (!doc) {
         throw new McpError(ErrorCode.InvalidRequest, `Unknown document: ${docId}`);
       }
+
       return {
         contents: [{
-          uri,
+          uri: request.params.uri,
           mimeType: 'text/plain',
           text: `# ${doc.title}\n\n${doc.content}${doc.url ? `\n\nSource: ${doc.url}` : ''}`,
         }],
@@ -134,14 +117,19 @@ class ClaudeCodeDocServer {
             description: 'Search through Claude Code documentation',
             inputSchema: {
               type: 'object',
-              properties: { query: { type: 'string', description: 'Search query' } },
+              properties: {
+                query: { type: 'string', description: 'Search query' }
+              },
               required: ['query']
-            },
+            }
           },
           {
             name: 'get_claude_code_capabilities',
-            description: 'Get overview section content',
-            inputSchema: { type: 'object', properties: {}, required: [] },
+            description: 'Get Claude Code capabilities overview',
+            inputSchema: {
+              type: 'object',
+              properties: {}
+            }
           }
         ],
       };
@@ -149,29 +137,33 @@ class ClaudeCodeDocServer {
 
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const name = request.params.name;
+
       if (name === 'search_claude_code_docs') {
-        const q = request.params.arguments?.query as string;
-        const results = CLAUDE_CODE_DOCS.filter(doc =>
-          doc.title.toLowerCase().includes(q.toLowerCase()) ||
-          doc.content.toLowerCase().includes(q.toLowerCase())
+        const query = request.params.arguments?.query as string;
+        const matches = CLAUDE_CODE_DOCS.filter(doc =>
+          doc.title.toLowerCase().includes(query.toLowerCase()) ||
+          doc.content.toLowerCase().includes(query.toLowerCase())
         );
         return {
           content: [{
             type: 'text',
-            text: results.length > 0
-              ? `Found ${results.length} relevant sections:\n\n${results.map(doc =>
-                  `## ${doc.title}\n${doc.content}${doc.url ? `\nSource: ${doc.url}` : ''}`
-                ).join('\n\n---\n\n')}`
-              : `No documentation found matching "${q}"`,
-          }],
+            text: matches.length
+              ? matches.map(doc => `## ${doc.title}\n${doc.content}${doc.url ? `\nSource: ${doc.url}` : ''}`).join('\n\n---\n\n')
+              : `No documentation found matching "${query}"`
+          }]
         };
       }
+
       if (name === 'get_claude_code_capabilities') {
         const overview = CLAUDE_CODE_DOCS.find(d => d.id === 'overview');
         return {
-          content: [{ type: 'text', text: overview?.content ?? '' }],
+          content: [{
+            type: 'text',
+            text: overview?.content ?? 'Capabilities not found'
+          }]
         };
       }
+
       throw new McpError(ErrorCode.MethodNotFound, `Unknown tool: ${name}`);
     });
   }
@@ -199,42 +191,43 @@ const httpServer = createServer(async (req, res) => {
     return;
   }
 
-  if (['/mcp', '/sse', '/sse/'].includes(req.url ?? '')) {
-    console.log(`${new Date().toISOString()} ${req.method} ${req.url}`);
-    console.log('Headers:', req.headers);
-
-    const mcpServer = new ClaudeCodeDocServer();
+  if (['/mcp', '/sse'].includes(req.url ?? '')) {
+    const server = new ClaudeCodeDocServer();
     try {
-      await mcpServer.runSSE(res);
-      return;
+      await server.runSSE(res);
     } catch (err) {
-      console.error('Error in MCP handler:', err);
+      console.error('SSE server error:', err);
       if (!res.headersSent) {
         res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: 'Internal server error' }));
+        res.end(JSON.stringify({ error: 'Internal Server Error' }));
       }
-      return;
     }
+    return;
   }
 
-  if (['/', '/health'].includes(req.url ?? '')) {
+  if (req.url === '/' || req.url === '/health') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
-      status: 'Claude Code MCP Server Running',
+      status: 'Claude Code MCP server running',
       timestamp: new Date().toISOString(),
-      endpoints: { mcp: '/mcp', sse: '/sse', health: '/health' },
+      endpoints: {
+        mcp: '/mcp',
+        sse: '/sse',
+        health: '/health'
+      }
     }));
     return;
   }
 
   res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not found. Use /mcp for MCP protocol.' }));
+  res.end(JSON.stringify({ error: 'Not Found' }));
 });
 
 if (process.argv.includes('--stdio')) {
   new ClaudeCodeDocServer().runStdio().catch(console.error);
 } else {
   httpServer.listen(PORT, () => {
-    console.log(`🚀 MCP Server listening on port ${PORT}`);
+    console.log(`🚀 Claude Code MCP server running on port ${PORT}`);
   });
 }
+
