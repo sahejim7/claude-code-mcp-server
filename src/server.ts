@@ -252,23 +252,47 @@ const httpServer = createServer(async (req, res) => {
 
   // MCP endpoint - this is what clients will connect to
   if (req.url === '/mcp' || req.url === '/sse' || req.url === '/sse/') {
+    console.log(`[${new Date().toISOString()}] ${req.method} request to ${req.url}`);
+    console.log(`[${new Date().toISOString()}] Headers:`, req.headers);
+    
     if (req.method === 'POST') {
       // Handle MCP over HTTP
-      const mcpServer = new ClaudeCodeDocServer();
-      await mcpServer.runSSE(res);
-      return;
+      try {
+        const mcpServer = new ClaudeCodeDocServer();
+        await mcpServer.runSSE(res);
+        return;
+      } catch (error) {
+        console.error('Error in POST handler:', error);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Internal server error' }));
+        return;
+      }
     } else if (req.method === 'GET') {
       // SSE endpoint for MCP
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive',
-        'Access-Control-Allow-Origin': '*',
-      });
-      
-      const mcpServer = new ClaudeCodeDocServer();
-      await mcpServer.runSSE(res);
-      return;
+      try {
+        console.log(`[${new Date().toISOString()}] Setting up SSE connection`);
+        res.writeHead(200, {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+          'Access-Control-Allow-Origin': '*',
+          'Access-Control-Allow-Headers': 'Cache-Control',
+        });
+        
+        // Send initial SSE comment to establish connection
+        res.write(': SSE connection established\n\n');
+        
+        const mcpServer = new ClaudeCodeDocServer();
+        await mcpServer.runSSE(res);
+        return;
+      } catch (error) {
+        console.error('Error in GET/SSE handler:', error);
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'SSE connection failed' }));
+        }
+        return;
+      }
     }
   }
 
