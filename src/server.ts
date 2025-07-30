@@ -251,7 +251,7 @@ const httpServer = createServer(async (req, res) => {
   }
 
   // MCP endpoint - this is what clients will connect to
-  if (req.url === '/mcp' || req.url === '/sse') {
+  if (req.url === '/mcp' || req.url === '/sse' || req.url === '/sse/') {
     if (req.method === 'POST') {
       // Handle MCP over HTTP
       const mcpServer = new ClaudeCodeDocServer();
